@@ -30,6 +30,10 @@ import {
   buildHeightRequest,
   buildLocateRequest,
 } from 'utils/valhalla'
+import {
+  getNonOverlappingStyle,
+  calculateMinMaxFromFeatures,
+} from 'utils/isochrone'
 import { colorMappings, buildHeightgraphData } from 'utils/heightgraph'
 import formatDuration from 'utils/date_time'
 import './Map.css'
@@ -561,40 +565,55 @@ class Map extends React.Component {
         Object.keys(results[provider].data).length > 0 &&
         results[provider].show
       ) {
-        for (const feature of results[provider].data.features) {
-          const coords_reversed = []
-          for (const latLng of feature.geometry.coordinates) {
-            coords_reversed.push([latLng[1], latLng[0]])
-          }
-          if (['Polygon', 'MultiPolygon'].includes(feature.geometry.type)) {
-            L.geoJSON(feature, {
-              style: (feat) => ({
-                ...feat.properties,
-                color: '#fff',
-                opacity: 1,
-              }),
-            })
-              .bindTooltip(
-                this.getIsoTooltip(
-                  feature.properties.contour,
-                  feature.properties.area.toFixed(2),
-                  provider
-                ),
-                {
-                  permanent: false,
-                  sticky: true,
-                }
-              )
-              .addTo(isoPolygonLayer)
-          } else {
-            // locations
+        // Get polygon features and sort by contour (largest first for proper layering)
+        const polygonFeatures = results[provider].data.features
+          .filter((feature) =>
+            ['Polygon', 'MultiPolygon'].includes(feature.geometry.type)
+          )
+          .sort(
+            (first, second) =>
+              second.properties.contour - first.properties.contour
+          ) // Largest first
 
+        // Calculate min/max for color scaling
+        const { minValue: minContour, maxValue: maxContour } =
+          calculateMinMaxFromFeatures(polygonFeatures, 'contour')
+
+        // Add polygons (largest first, so smaller ones render on top)
+        for (const feature of polygonFeatures) {
+          const styleFunction = getNonOverlappingStyle(
+            feature.properties.contour,
+            polygonFeatures.length,
+            minContour,
+            maxContour
+          )
+
+          L.geoJSON(feature, {
+            style: styleFunction,
+          })
+            .bindTooltip(
+              this.getIsoTooltip(
+                feature.properties.contour,
+                feature.properties.area.toFixed(2),
+                provider
+              ),
+              {
+                permanent: false,
+                sticky: true,
+              }
+            )
+            .addTo(isoPolygonLayer)
+        }
+
+        // Handle location features (unchanged)
+        for (const feature of results[provider].data.features) {
+          if (!['Polygon', 'MultiPolygon'].includes(feature.geometry.type)) {
             if (feature.properties.type === 'input') {
               return
             }
             L.geoJSON(feature, {
-              pointToLayer: (feat, ll) => {
-                return L.circleMarker(ll, {
+              pointToLayer: (feat, latLng) => {
+                return L.circleMarker(latLng, {
                   radius: 6,
                   color: '#000',
                   fillColor: '#fff',
