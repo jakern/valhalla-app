@@ -1,5 +1,3 @@
-// viridisUtils.js
-
 // Viridis color palette (subset for performance)
 const VIRIDIS_COLORS = [
   '#f0f921',
@@ -72,6 +70,7 @@ export const getNonOverlappingStyle = (
 
   // Calculate opacity - larger contours (rendered first) get lower opacity
   // This ensures smaller contours on top are more visible
+  // Configurable but 0.0 produced the best results to me
   const baseOpacity = 0.1
   const minOpacity = 0.1
   const opacityRange = baseOpacity - minOpacity
